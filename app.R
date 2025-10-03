@@ -1,10 +1,10 @@
 # app.R
-# Shiny EMA Semi-Random Scheduler (REDCap-ready) — Time pickers (shinyTime)
-# - Configure day count, prompts/day, and per-prompt daytime windows via time pickers
-# - Generates semi-random (uniform) times within each column's window for every day
-# - Optional hard minimum interval between sequential prompts using rejection sampling
-# - Editable table (full datetimes), DST warning, weekend highlighting, plot tab
-# - Exports a single-row CSV for REDCap with record_id + templated datetime columns
+# Shiny EMA Semi-Random Scheduler (REDCap-ready)
+# - Time pickers (shinyTime) for per-prompt windows
+# - Windows + Table in the same tab with shared horizontal scroll and aligned column widths
+# - Vertical time-window cards (Start above End)
+# - Day column shows 1..N (dates still used internally)
+# - Static Info tab; REDCap-ready CSV export; optional hard min interval; weekend highlighting
 
 # ---- Packages ----
 library(shiny)
@@ -13,27 +13,23 @@ library(ggplot2)
 library(shinyTime)
 
 # ---- Helpers ----
-# REDCap-friendly datetime format
 fmt_time <- function(x) format(x, "%Y-%m-%d %H:%M", usetz = FALSE)
 
-# Default window suggestions by column index
 suggest_window <- function(j) {
   switch(
     as.character(j),
-    "1" = list(8, 0, 10, 0), # morning 08:00–10:00
-    "2" = list(12, 0, 14, 0), # noon 12:00–14:00
-    "3" = list(16, 0, 18, 0), # afternoon 16:00–18:00
-    "4" = list(19, 0, 21, 0), # evening 19:00–21:00
-    list(9, 0, 17, 0) # fallback
+    "1" = list(8, 0, 10, 0),
+    "2" = list(12, 0, 14, 0),
+    "3" = list(16, 0, 18, 0),
+    "4" = list(19, 0, 21, 0),
+    list(9, 0, 17, 0)
   )
 }
 
-# Adaptive index formatting for {day} and {beep}
 fmt_ix <- function(x, max_x) {
   if (max_x < 10) as.character(x) else sprintf("%02d", x)
 }
 
-# Build column names from a glue-like template with {day} and {beep}
 build_names <- function(n_days, prompts_per_day, template) {
   out <- character(n_days * prompts_per_day)
   k <- 1
@@ -50,24 +46,57 @@ build_names <- function(n_days, prompts_per_day, template) {
   out
 }
 
-# Flatten matrix (day-major) into vector
-flatten_day_major <- function(mat) as.vector(t(mat))
-
-# Build export strings from the editable data frame where cells already contain
-# full datetimes (YYYY-MM-DD HH:MM). We ignore the read-only Day column.
 build_export_strings <- function(edit_df) {
   times_only <- edit_df[,
     setdiff(names(edit_df), c("Day", ".wknd")),
     drop = FALSE
   ]
   vals <- as.vector(t(as.matrix(times_only)))
-  # Keep only the first 16 chars that match YYYY-MM-DD HH:MM
-  vals <- sub("^(\\s*)(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}).*$", "\\2", vals)
-  vals
+  sub("^(\\s*)(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}).*$", "\\2", vals)
 }
 
 # ---- UI ----
 ui <- fluidPage(
+  # Global CSS (shared widths + non-wrapping windows row + shared scroller)
+  tags$head(
+    tags$style(HTML(
+      "
+      :root{
+        --day-col-width: 64px;   /* width of left Day column and its spacer */
+        --col-width: 140px;      /* width of each prompt column and its card */
+      }
+
+      /* Make entire tab content horizontally scrollable */
+      .tab-content { overflow-x: auto; }
+
+      /* Shared scroller wraps the windows row + the table so they pan together */
+      .shared-scroll { width: 100%; overflow-x: auto; }
+
+      /* Windows row: single line, no wrap, aligned with table columns */
+      .windows-row {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 8px;
+        align-items: stretch;
+        padding-bottom: 8px;
+      }
+      .windows-spacer {
+        flex: 0 0 var(--day-col-width);
+        min-width: var(--day-col-width);
+      }
+      .prompt-card {
+        flex: 0 0 var(--col-width);
+        min-width: var(--col-width);
+      }
+      .prompt-card .time-field { width: 100%; min-width: 0; }
+
+      /* DT column widths to match the cards */
+      table.dataTable { width: auto !important; }
+      table.dataTable th, table.dataTable td { white-space: nowrap; }
+    "
+    ))
+  ),
+
   titlePanel("EMA Semi-Random Prompt Scheduler (REDCap-ready)"),
   sidebarLayout(
     sidebarPanel(
@@ -130,8 +159,6 @@ ui <- fluidPage(
     ),
     mainPanel(
       width = 8,
-      h4("Per-prompt daytime windows (applies to all days)"),
-      uiOutput("windows_row"),
       uiOutput("dst_notice"),
       uiOutput("gap_stats"),
       tags$hr(),
@@ -139,8 +166,15 @@ ui <- fluidPage(
         id = "tabs",
         tabPanel(
           "Table",
-          h4("Schedule preview (Days × Prompts)"),
-          DTOutput("schedule_dt")
+          h4("Per-prompt windows + schedule (horizontally scrollable)"),
+          # Shared scroller holds the windows row and the table so they align & pan together
+          div(
+            class = "shared-scroll",
+            # Windows row: spacer (for Day column) + one vertical card per prompt
+            uiOutput("windows_row"),
+            # Table (no inner scrolling; grows to content width)
+            DTOutput("schedule_dt")
+          )
         ),
         tabPanel(
           "Plot",
@@ -160,16 +194,17 @@ ui <- fluidPage(
         tabPanel(
           "Info",
           h4("About this app"),
-          textAreaInput(
-            "info_text",
-            "Information text",
-            value = "Use this tab to describe the purpose of the EMA scheduler, consent/ethics notes, and how to interpret the CSV export. You can edit this text and it will be shown below.",
-            rows = 10,
-            width = "100%"
-          ),
           div(
             style = "border:1px solid #eee; padding:10px; background:#fafafa; margin-top:8px;",
-            uiOutput("info_preview")
+            p(
+              "This EMA Semi-Random Scheduler app helps researchers generate semi-randomized prompt schedules,"
+            ),
+            p(
+              "review them in table or plot form, and export a REDCap-ready CSV."
+            ),
+            p(
+              "The current version uses fixed daytime windows with per-prompt randomization and optional minimum intervals."
+            )
           )
         )
       )
@@ -179,49 +214,51 @@ ui <- fluidPage(
 
 # ---- Server ----
 server <- function(input, output, session) {
-  # Build dynamic window inputs per column — now with time pickers
+  # Time-window inputs (vertical cards) + left spacer to align with the table's Day column
   output$windows_row <- renderUI({
     p <- req(input$prompts_per_day)
     p <- max(1, min(12, as.integer(p)))
 
-    cols <- lapply(seq_len(p), function(j) {
+    cards <- lapply(seq_len(p), function(j) {
       d <- suggest_window(j)
       start_val <- sprintf("%02d:%02d", d[[1]], d[[2]])
       end_val <- sprintf("%02d:%02d", d[[3]], d[[4]])
 
-      column(
-        width = max(2, 12 %/% p),
+      tags$div(
+        class = "prompt-card",
         wellPanel(
           tags$strong(sprintf("Prompt %d", j)),
           div(
-            style = "display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;",
-            div(
-              style = "min-width: 160px;",
-              shinyTime::timeInput(
-                inputId = paste0("tstart_", j),
-                label = "Start",
-                value = strptime(start_val, "%H:%M"),
-                seconds = FALSE
-              )
-            ),
-            div(
-              style = "min-width: 160px;",
-              shinyTime::timeInput(
-                inputId = paste0("tend_", j),
-                label = "End",
-                value = strptime(end_val, "%H:%M"),
-                seconds = FALSE
-              )
+            class = "time-field",
+            shinyTime::timeInput(
+              inputId = paste0("tstart_", j),
+              label = "Start",
+              value = strptime(start_val, "%H:%M"),
+              seconds = FALSE
+            )
+          ),
+          div(
+            class = "time-field",
+            shinyTime::timeInput(
+              inputId = paste0("tend_", j),
+              label = "End",
+              value = strptime(end_val, "%H:%M"),
+              seconds = FALSE
             )
           )
         )
       )
     })
 
-    fluidRow(cols)
+    # Left spacer aligns with Day column width; then one card per prompt
+    tags$div(
+      class = "windows-row",
+      tags$div(class = "windows-spacer"),
+      cards
+    )
   })
 
-  # Detect DST transitions within the planned period in the specified TZ
+  # DST transitions
   dst_transitions <- reactive({
     req(input$start_date, input$n_days, input$tz)
     n_days <- max(1, min(365, as.integer(input$n_days)))
@@ -273,7 +310,7 @@ server <- function(input, output, session) {
     )
   })
 
-  # Core generator with optional hard minimum interval via rejection sampling
+  # Generator with optional hard min interval
   schedule_mat <- reactive({
     req(input$start_date, input$n_days, input$prompts_per_day, input$tz)
     if (!is.na(input$seed)) {
@@ -284,21 +321,18 @@ server <- function(input, output, session) {
     p <- max(1, min(12, as.integer(input$prompts_per_day)))
     tz <- input$tz
 
-    days <- seq.Date(as.Date(input$start_date), by = "day", length.out = n_days)
+    days <- seq.Date(as.Date(input$start_date), by = "day", length_out = n_days)
 
-    # Collect window settings per column from time pickers
     windows <- lapply(seq_len(p), function(j) {
       d <- suggest_window(j)
       tstart <- input[[paste0("tstart_", j)]]
       tend <- input[[paste0("tend_", j)]]
-
       if (is.null(tstart)) {
         tstart <- strptime(sprintf("%02d:%02d", d[[1]], d[[2]]), "%H:%M")
       }
       if (is.null(tend)) {
         tend <- strptime(sprintf("%02d:%02d", d[[3]], d[[4]]), "%H:%M")
       }
-
       list(tstart = tstart, tend = tend)
     })
 
@@ -325,7 +359,6 @@ server <- function(input, output, session) {
         st_m <- as.integer(format(w$tstart, "%M"))
         en_h <- as.integer(format(w$tend, "%H"))
         en_m <- as.integer(format(w$tend, "%M"))
-
         st <- as.POSIXct(
           sprintf("%s %02d:%02d:00", date_chr, st_h, st_m),
           tz = tz
@@ -409,12 +442,12 @@ server <- function(input, output, session) {
     mat
   })
 
-  # Recompute on regenerate button
+  # Manual regenerate trigger
   observeEvent(input$regen, {
     schedule_mat()
   })
 
-  # Editable preview table using DT (full datetimes) + weekend highlighting
+  # Editable table state
   edits <- reactiveVal(NULL)
 
   observeEvent(
@@ -428,26 +461,23 @@ server <- function(input, output, session) {
         }),
         stringsAsFactors = FALSE
       )
-      day_labels <- rownames(mat)
+      # show Day as 1..N (compact), keep dates for export/highlighting
+      day_dates <- rownames(mat)
+      day_index <- seq_len(nrow(hm))
       df_full <- as.data.frame(
-        lapply(seq_len(ncol(hm)), function(j) paste(day_labels, hm[[j]])),
+        lapply(seq_len(ncol(hm)), function(j) paste(day_dates, hm[[j]])), # keep full datetime strings
         stringsAsFactors = FALSE
       )
       names(df_full) <- colnames(hm)
-      wknd <- weekdays(as.Date(day_labels)) %in% c("Saturday", "Sunday")
-      new_df <- cbind(
-        Day = day_labels,
-        df_full,
-        .wknd = wknd
-      )
-      edits(new_df)
+      wknd <- weekdays(as.Date(day_dates)) %in% c("Saturday", "Sunday")
+      edits(cbind(Day = day_index, df_full, .wknd = wknd))
     },
     ignoreInit = FALSE
   )
 
   output$schedule_dt <- renderDT({
     df <- req(edits())
-    p <- ncol(df) - 2L # prompts count
+    p <- ncol(df) - 2L # number of prompt columns
     cols_to_style <- names(df)[2:(1 + p)]
 
     datatable(
@@ -461,18 +491,23 @@ server <- function(input, output, session) {
         dom = 't',
         ordering = FALSE,
         paging = FALSE,
-        scrollX = TRUE,
-        columnDefs = list(list(visible = FALSE, targets = ncol(df) - 1))
+        autoWidth = TRUE,
+        # Column widths: Day + each prompt column
+        columnDefs = list(
+          list(width = "var(--day-col-width)", targets = 0),
+          list(width = "var(--col-width)", targets = seq.int(1, p)),
+          list(visible = FALSE, targets = ncol(df) - 1) # hide .wknd
+        )
       )
     ) |>
       formatStyle(
         columns = cols_to_style,
         valueColumns = ".wknd",
-        backgroundColor = styleEqual(c(TRUE, FALSE), c("#FFF3CD", NA)) # light amber on weekends
+        backgroundColor = styleEqual(c(TRUE, FALSE), c("#FFF3CD", NA))
       )
   })
 
-  # Gap stats panel
+  # Gap stats
   output$gap_stats <- renderUI({
     mat <- schedule_mat()
     if (!isTRUE(input$enforce_gap)) {
@@ -510,13 +545,13 @@ server <- function(input, output, session) {
     do.call(tags$div, c(list(class = cls, style = "margin-top:10px;"), parts))
   })
 
-  # Validate datetime edits (YYYY-MM-DD HH:MM)
+  # Validate datetime edits
   observeEvent(input$schedule_dt_cell_edit, {
     info <- input$schedule_dt_cell_edit
     df <- req(edits())
     if (info$col == 0 || info$col == (ncol(df) - 1)) {
       return()
-    } # lock Day and .wknd
+    }
 
     val <- trimws(info$value)
     valid <- grepl("^(\\d{4}-\\d{2}-\\d{2}) (?:[01]\\d|2[0-3]):[0-5]\\d$", val)
@@ -544,29 +579,27 @@ server <- function(input, output, session) {
     )
   })
 
-  # ---- Plot (weekend highlighting) ----
+  # Plot
   plot_df <- reactive({
     df <- req(edits())
     if (ncol(df) <= 2) {
       return(NULL)
     }
-
-    day_col <- df$Day
-    wknd <- df$.wknd
+    day_nums <- df$Day # 1..N shown
+    wknd <- df$.wknd # weekend flag (hidden)
     time_cols <- df[, setdiff(names(df), c("Day", ".wknd")), drop = FALSE]
 
     vals <- as.vector(t(as.matrix(time_cols)))
     if (!length(vals)) {
       return(NULL)
     }
-
     dt <- strptime(vals, "%Y-%m-%d %H:%M")
     n_days <- nrow(df)
     p <- ncol(time_cols)
     day_idx <- rep(seq_len(n_days), each = p)
 
     data.frame(
-      day = as.character(day_col[day_idx]),
+      day = as.character(day_nums[day_idx]),
       is_weekend = wknd[day_idx],
       prompt = rep(seq_len(p), times = n_days),
       tod_min = as.integer(format(dt, "%H")) *
@@ -585,7 +618,6 @@ server <- function(input, output, session) {
     }
     breaks <- seq(0, 24 * 60, by = 120)
     labels <- sprintf("%02d:00", breaks %/% 60)
-
     ggplot(
       d,
       aes(
@@ -610,21 +642,16 @@ server <- function(input, output, session) {
       theme(panel.grid.minor = element_blank())
   })
 
-  # ---- Event name helpers & validation ----
+  # Event name validation
   is_valid_event <- function(x) {
     if (is.null(x) || !nzchar(x)) {
       return(FALSE)
     }
-    # REDCap unique event name pattern: lowercase letters/digits/_ and must end with _arm_N
     grepl("^[a-z][a-z0-9_]*_arm_[1-9][0-9]*$", x)
   }
-
   output$event_notice <- renderUI({
     ev <- input$event_choice
-    if (is.null(ev)) {
-      return(NULL)
-    }
-    if (is_valid_event(ev)) {
+    if (is.null(ev) || is_valid_event(ev)) {
       return(NULL)
     }
     tags$div(
@@ -634,11 +661,7 @@ server <- function(input, output, session) {
     )
   })
 
-  output$info_preview <- renderUI({
-    HTML(markdown::markdownToHTML(text = input$info_text, fragment.only = TRUE))
-  })
-
-  # ---- Export ----
+  # Export
   output$dl_csv <- downloadHandler(
     filename = function() {
       rid <- ifelse(nchar(input$record_id) > 0, input$record_id, "record")
@@ -673,9 +696,7 @@ server <- function(input, output, session) {
         as.data.frame(cols),
         check.names = FALSE
       )
-      # Validate event name before writing
-      ev <- input$event_choice
-      if (!is_valid_event(ev)) {
+      if (!is_valid_event(input$event_choice)) {
         stop(
           "Export blocked: invalid REDCap event name. It must match ^[a-z][a-z0-9_]*_arm_[1-9][0-9]*$."
         )
