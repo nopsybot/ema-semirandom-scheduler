@@ -61,6 +61,19 @@ ui <- fluidPage(
   tags$head(
     tags$style(HTML(
       "
+      .app-logo {
+      position: fixed;     /* pin to viewport */
+      top: 10px;
+      right: 12px;
+      height: 84px;        /* adjust to taste */
+      z-index: 1000;       /* above app content */
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,.25));
+      pointer-events: none; /* don't block clicks underneath */
+    }
+    @media (max-width: 768px) {
+      .app-logo { display: none; }  /* optional: hide on phones */
+    }
+      
       :root{
         --day-col-width: 64px;   /* width of left Day column and its spacer */
         --col-width: 140px;      /* width of each prompt column and its card */
@@ -95,6 +108,11 @@ ui <- fluidPage(
       table.dataTable th, table.dataTable td { white-space: nowrap; }
     "
     ))
+  ),
+
+  tags$img(
+    src = "https://github.com/nopsybot/ema-semirandom-scheduler/raw/main/hexlogo.png",
+    class = "app-logo"
   ),
 
   titlePanel("EMA Semi-Random Prompt Scheduler (REDCap-ready)"),
