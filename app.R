@@ -321,7 +321,7 @@ server <- function(input, output, session) {
     p <- max(1, min(12, as.integer(input$prompts_per_day)))
     tz <- input$tz
 
-    days <- seq.Date(as.Date(input$start_date), by = "day", length_out = n_days)
+    days <- seq.Date(as.Date(input$start_date), by = "day", length.out = n_days)
 
     windows <- lapply(seq_len(p), function(j) {
       d <- suggest_window(j)
