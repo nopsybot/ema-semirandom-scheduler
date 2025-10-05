@@ -65,7 +65,7 @@ ui <- fluidPage(
       position: fixed;     /* pin to viewport */
       top: 10px;
       right: 12px;
-      height: 84px;        /* adjust to taste */
+      height: 10%;        /* adjust to taste */
       z-index: 1000;       /* above app content */
       filter: drop-shadow(0 2px 6px rgba(0,0,0,.25));
       pointer-events: none; /* don't block clicks underneath */
@@ -169,7 +169,6 @@ ui <- fluidPage(
         )
       ),
       actionButton("regen", "Regenerate times", class = "btn-primary"),
-      tags$hr(),
       downloadButton("dl_csv", "Export CSV for REDCap"),
       helpText(
         "Export = single row: record_id + names from template (day-major order)."
@@ -215,13 +214,21 @@ ui <- fluidPage(
           div(
             style = "border:1px solid #eee; padding:10px; background:#fafafa; margin-top:8px;",
             p(
-              "This EMA Semi-Random Scheduler app helps researchers generate semi-randomized prompt schedules,"
+              "This EMA Semi-Random Scheduler app helps researchers generate semi-randomized prompt schedules."
             ),
             p(
-              "review them in table or plot form, and export a REDCap-ready CSV."
+              "This App let's you specify the design parameters in the sidebar and adjust the per-prompt time windows. Individual datetimes are drawn from a uniform distribution. Table cells can be edited individually if needed. The plot provides a visual overview. The current version uses fixed daytime windows with per-prompt randomization and optional minimum intervals. The app also detects daylight saving time transitions and highlights weekends in the table and plot."
             ),
             p(
-              "The current version uses fixed daytime windows with per-prompt randomization and optional minimum intervals."
+              "The CSV export provides all datetimes in a wide-format table, which can be usefull for various setups. The motivating example stems from the REDCap setup, where each prompt's trigger datetime is implemented as a seperate variable. These registered datetimes are then used for REDCap's Automated Survey Invitations (ASI). The app generates schedules for one participant. Adjust the column name template to match your variable naming scheme. The export includes the record ID and event name as specified in the sidebar."
+            ),
+            p(
+              "This app was created by Konstantin Drexl, PhD. Feature requests and bug reports are welcome via the corresponding",
+              a(
+                href = 'https://github.com/nopsybot/ema-semirandom-scheduler',
+                "GitHub repository"
+              ),
+              ".",
             )
           )
         )
