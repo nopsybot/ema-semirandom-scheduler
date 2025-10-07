@@ -5,6 +5,6 @@ account: kdrexl
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15653453
-bundleId: 10989781
+bundleId: 10995444
 url: https://kdrexl.shinyapps.io/ema-semirandom-scheduler/
 version: 1
