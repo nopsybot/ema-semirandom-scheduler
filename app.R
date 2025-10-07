@@ -18,10 +18,10 @@ fmt_time <- function(x) format(x, "%Y-%m-%d %H:%M", usetz = FALSE)
 suggest_window <- function(j) {
   switch(
     as.character(j),
-    "1" = list(8, 0, 10, 0),
-    "2" = list(12, 0, 14, 0),
-    "3" = list(16, 0, 18, 0),
-    "4" = list(19, 0, 21, 0),
+    "1" = list(8, 45, 09, 40),
+    "2" = list(12, 0, 13, 55),
+    "3" = list(16, 0, 17, 40),
+    "4" = list(19, 30, 21, 30),
     list(9, 0, 17, 0)
   )
 }
@@ -123,7 +123,7 @@ ui <- fluidPage(
       numericInput(
         "n_days",
         "Number of days",
-        value = 14,
+        value = 15,
         min = 1,
         max = 365,
         step = 1
@@ -647,7 +647,7 @@ server <- function(input, output, session) {
       d,
       aes(
         x = tod_min,
-        y = factor(day, levels = unique(d$day)),
+        y = factor(day, levels = rev(unique(d$day))),
         fill = is_weekend
       )
     ) +
